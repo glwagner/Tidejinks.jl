@@ -4,7 +4,7 @@ using Scratch
 using Downloads
 using ClimaOcean.DataWrangling: download_progress
 
-urls = Dict(
+kerneldata = Dict(
     "de440.bsp" => "https://www.dropbox.com/scl/fi/rncpxkcad8fmr2oxboq0k/" *
                    "de440.bsp?rlkey=5ao2velhbqvb28mdzjs29pol2&st=sgya8xqa&dl=0",
 
@@ -30,59 +30,73 @@ urls = Dict(
                                 "latest_leapseconds.tls?rlkey=66xhz970q7tzrtvtrmxto20ie&st=hwmbtfks&dl=0",
 )
 
-#spice_cache::String = ""
-#meta_kernel_file::String = ""
+spice_cache::String = ""
 
-spice_cache = "SPICE" #@get_scratch!("SPICE")
-!ispath(spice_cache) && mkdir(spice_cache)
-meta_kernel_file = joinpath(spice_cache, "meta_kernel.txt")
+function __init__()
+    global spice_cache = @get_scratch!("SPICE")
 
-for (path, url) in urls
-    filepath = joinpath(spice_cache, path)
-    @info "Downloading file to $filepath..."
-    Downloads.download(url, filepath; progress=download_progress)
-end
-
-meta_kernel = """
-\\begindata
-
-KERNELS_TO_LOAD=(
-    '$spice_cache/naif0012.tls',
-    '$spice_cache/latest_leapseconds.tls',
-    '$spice_cache/earth_assoc_itrf93.tf',
-    '$spice_cache/de440.bsp',
-    '$spice_cache/pck00010.tpc',
-    '$spice_cache/gm_de431.tpc',
-    '$spice_cache/earth_000101_220503_220207.bpc'
-    '$spice_cache/earth_720101_070426.bpc'
-)
-
-\\begintext
-"""
-
-if !isfile(meta_kernel_file)
-    open(meta_kernel_file, "w") do file
-        write(file, meta_kernel)
+    for (path, url) in kerneldata
+        filepath = joinpath(spice_cache, path)
+        @info "Downloading file to $filepath..."
+        !isfile(filepath) && Downloads.download(url, filepath; progress=download_progress)
     end
 end
 
-using SPICE
-@show spice_cache
-@show meta_kernel_file
-furnsh(meta_kernel_file)
+#####
+##### Here we copy the data in scratch into a local directory.
+#####
+##### This is messy, but _I think_ required to work around the limiations
+##### of how SPICE ingests "kernels"; ie the paths in meta_kernel.txt
+##### must be local paths? Something to look into.
+#####
 
-# Get gravitational parameters (in m)
-const G_sun  = first(bodvrd("SUN", "GM", 1)) * 1e9
-const G_moon = first(bodvrd("MOON", "GM", 1)) * 1e9
+using SPICE
+
+function wrangle_spice_kernels(metafile="kernels.txt", kernel_relpath="")
+                        
+    kernel_relpath != "" && !ispath(kernel_relpath) && mkdir(kernel_relpath)
+
+    for path in keys(kerneldata)
+        scratch_path = joinpath(spice_cache, path)
+        local_path = joinpath(kernel_relpath, path)
+        !isfile(local_path) && cp(scratch_path, kernel_relpath)
+    end
+
+    if kernel_relpath != "" && kernel_relpath[end] != '/'
+        kernel_relpath *= '/'
+    end
+
+    metatxt = """
+    \\begindata
+
+    KERNELS_TO_LOAD=(
+        '$(kernel_relpath)naif0012.tls',
+        '$(kernel_relpath)latest_leapseconds.tls',
+        '$(kernel_relpath)earth_assoc_itrf93.tf',
+        '$(kernel_relpath)de440.bsp',
+        '$(kernel_relpath)pck00010.tpc',
+        '$(kernel_relpath)gm_de431.tpc',
+        '$(kernel_relpath)earth_000101_220503_220207.bpc',
+        '$(kernel_relpath)earth_720101_070426.bpc'
+    )
+
+    \\begintext
+    """
+
+    isfile(metafile) && rm(metafile)
+    open(metafile, "w") do file
+        write(file, metatxt)
+    end
+
+    return nothing
+end
 
 # Constants
 const EARTH_RADIUS = 6371e3
 const LOVE_H2 = 0.61
 const LOVE_K2 = 0.30
 
-using Oceananigans
 using Dates
-using LegendrePolynomials
 
 """
     get_body_position(body, time)
@@ -105,13 +119,16 @@ function get_body_position(body, time)
     return λ, φ, r
 end
 
+"""'h' for 'hack'"""
+@inline hsind(φ) = sin(φ * π / 180)
+@inline hcosd(φ) = cos(φ * π / 180)
+
 """
     calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂)
 
 Calculate cosine of zenith angle using spherical law of cosines.
 """
-calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂) =
-    sind(φ₁)*sind(φ₂) + cosd(φ₁)*cosd(φ₂)*cosd(λ₂ - λ₁)
+@inline calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂) = hsind(φ₁) * hsind(φ₂) + hcosd(φ₁) * hcosd(φ₂) * hcosd(λ₂ - λ₁)
 
 """
     compute_potential(longitude, latitude, time; density=1)
@@ -127,11 +144,33 @@ Arguments:
 Returns:
 - 2D array of tidal potential values
 """
-function compute_potential(λ, φ, time; reference_density=1020)
-    # Get celestial body positions
-    λ_sun,  φ_lat, R_sun  = get_body_position("SUN", time)
-    λ_moon, φ_lat, R_moon = get_body_position("MOON", time)
+function gravitational_parameters()
+    # Get gravitational parameters (in m)
+    G_sun  = first(bodvrd("SUN", "GM", 1)) * 1e9
+    G_moon = first(bodvrd("MOON", "GM", 1)) * 1e9
+    return G_sun, G_moon
+end
 
+function celestial_positions(time)
+    # Get celestial body positions
+    X_sun  = get_body_position("SUN", time)
+    X_moon = get_body_position("MOON", time)
+
+    return X_sun, X_moon
+end
+
+function compute_tidal_potential(λ, φ, time)
+    G_sun, G_moon = gravitational_parameters()
+    X_sun, X_moon = celestial_positions(time)
+    return compute_tidal_potential(λ, φ, X_sun, X_moon, G_sun, G_moon)
+end
+
+using LegendrePolynomials
+
+@inline function compute_tidal_potential(λ, φ, X_sun, X_moon, G_sun, G_moon)
+    λ_sun,  φ_lat, R_sun  = X_sun
+    λ_moon, φ_lat, R_moon = X_moon
+    
     # Calculate zenith cosines
     μ_sun  = calculate_zenith_cosine(λ, φ, λ_sun, φ_lat)
     μ_moon = calculate_zenith_cosine(λ, φ, λ_moon, φ_lat)
@@ -146,12 +185,44 @@ function compute_potential(λ, φ, time; reference_density=1020)
 
     # Apply solid earth tide correction
     ϵ = 1 + LOVE_K2 - LOVE_H2 # = 0.69
-    ρₒ = reference_density
 
     # Return combined, corrected potential
-    return ϵ * ρₒ * (F_sun + F_moon)
+    return ϵ * (F_sun + F_moon)
 end
 
+using Oceananigans
+using Oceananigans.Grids: λnode, φnode
+using Oceananigans.Utils: launch!
+using KernelAbstractions: @kernel, @index
+
+const XYField = Field{<:Any, <:Any, Nothing}
+
+function compute_tidal_potential!(Φ::XYField, time)
+    G_sun, G_moon = gravitational_parameters()
+    X_sun, X_moon = celestial_positions(time)
+    parameters = (; G_sun, G_moon, X_sun, X_moon)
+
+    LX, LY, LZ = Oceananigans.Fields.location(Φ)
+    ℓx = LX()
+    ℓy = LY()
+    grid = Φ.grid
+    arch = Oceananigans.Architectures.architecture(grid)
+    launch!(arch, grid, :xy, _compute_tidal_potential, Φ, grid, ℓx, ℓy, parameters)
+
+    return nothing
+end
+
+@kernel function _compute_tidal_potential(Φ, grid, ℓx, ℓy, p)
+    i, j = @index(Global, NTuple)
+    λ = λnode(i, j, 1, grid, ℓx, ℓy, nothing)
+    φ = φnode(i, j, 1, grid, ℓx, ℓy, nothing)
+    @inbounds Φ[i, j, 1] = compute_tidal_potential(λ, φ,
+                                                   p.X_sun, p.X_moon,
+                                                   p.G_sun, p.G_moon)
+end
+
+
+#=
 # Create Oceananigans grid
 grid = LatitudeLongitudeGrid(size = (180, 80),
                              longitude = (0, 360),
@@ -174,7 +245,7 @@ for i = 1:Nx, j=1:Ny
     Φ[i, j, 1] = Φi
 end
 
-
 greet() = print("Hello World!")
+=#
 
 end # module Tidejinks
