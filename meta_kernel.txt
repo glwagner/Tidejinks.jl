@@ -1,0 +1,15 @@
+\begindata
+
+KERNELS_TO_LOAD=(
+    'naif0012.tls',
+    'latest_leapseconds.tls',
+    'earth_assoc_itrf93.tf',
+    'de440.bsp',
+    'pck00010.tpc',
+    'gm_de431.tpc',
+    'earth_000101_220503_220207.bpc'
+    'earth_720101_070426.bpc'
+)
+
+\begintext
+
