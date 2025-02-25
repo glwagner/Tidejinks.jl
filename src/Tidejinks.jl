@@ -221,31 +221,4 @@ end
                                                    p.G_sun, p.G_moon)
 end
 
-
-#=
-# Create Oceananigans grid
-grid = LatitudeLongitudeGrid(size = (180, 80),
-                             longitude = (0, 360),
-                             latitude = (-80, 80),
-                             topology = (Periodic, Bounded, Flat))
-
-# Convert grid coordinates to radians
-λ = λnodes(grid, Center(), Center(), Center())
-φ = φnodes(grid, Center(), Center(), Center())
-
-# Create field to store tidal potential
-Φ = Field{Center, Center, Nothing}(grid)
-
-# Compute potential at current time
-t = DateTime(1993, 1, 1, 12)
-
-Nx, Ny, Nz = size(grid)
-for i = 1:Nx, j=1:Ny
-    Φi = compute_potential(λ[i], φ[j], t)
-    Φ[i, j, 1] = Φi
-end
-
-greet() = print("Hello World!")
-=#
-
 end # module Tidejinks
