@@ -2,6 +2,8 @@ module Tidejinks
 
 using Scratch
 using Downloads
+using LegendrePolynomials
+using Oceananigans
 using ClimaOcean.DataWrangling: download_progress
 
 # URLs to NAIF data
@@ -9,6 +11,7 @@ using ClimaOcean.DataWrangling: download_progress
 const NAIF = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
 
 kerneldata = Dict(
+    # "Leap seconds kernel
     "de440.bsp"                      => NAIF * "/spk/planets/de440.bsp",
     "earth_assoc_itrf93.tf"          => NAIF * "/fk/planets/earth_assoc_itrf93.tf",
     "earth_000101_220503_220207.bpc" => NAIF * "/pck/earth_000101_220503_220207.bpc",
@@ -17,6 +20,7 @@ kerneldata = Dict(
     "gm_de431.tpc"                   => NAIF * "/pck/gm_de431.bpc",
     "pck00010.tpc"                   => NAIF * "/pck/pck00010.tpc",
     "latest_leapseconds.tls"         => NAIF * "/lsk/latest_leapseconds.tls",
+    # "Leap seconds kernel
     "naif0012.tls"                   => NAIF * "/lsk/naif0012.tls",
 )
 
@@ -121,26 +125,29 @@ Calculate cosine of zenith angle using spherical law of cosines.
 @inline calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂) = hsind(φ₁) * hsind(φ₂) + hcosd(φ₁) * hcosd(φ₂) * hcosd(λ₂ - λ₁)
 
 """
-    compute_potential(longitude, latitude, time; density=1)
+    gravitational_parameters()
 
-Compute tidal potential at specified time for given grid coordinates.
+Return `G_sun, G_moon`, the gravitational constants for the sun and moon,
+respectively.
 
-Arguments:
-- longitude: 2D array of longitude values in radians
-- latitude: 2D array of latitude values in radians
-- time: DateTime object specifying the time
-- density: reference density (default=1)
-
-Returns:
-- 2D array of tidal potential values
+Uses the CSPICE function `bodvrd`.
+See https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/bodvrd_c.html.
 """
 function gravitational_parameters()
     # Get gravitational parameters (in m)
+    # https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/bodvrd_c.html
     G_sun  = first(bodvrd("SUN", "GM", 1)) * 1e9
     G_moon = first(bodvrd("MOON", "GM", 1)) * 1e9
     return G_sun, G_moon
 end
 
+"""
+    celestrial_positions(time)
+
+Return `X_sun, X_moon`, 3-tuples that represent the
+longitude, latitude, and distance of the sun and moon
+respectively relative to Earth.
+"""
 function celestial_positions(time)
     # Get celestial body positions
     X_sun  = get_body_position("SUN", time)
@@ -155,8 +162,14 @@ function compute_tidal_potential(λ, φ, time)
     return compute_tidal_potential(λ, φ, X_sun, X_moon, G_sun, G_moon)
 end
 
-using LegendrePolynomials
+"""
+    compute_tidal_potential(λ, φ, X_sun, X_moon, G_sun, G_moon)
 
+Compute the effective tidal potential corrected for the
+solid Earth tide at Earth longitude `λ` and Earth latitude `φ`,
+given spherical position of the sun and moon `X_sun` and `X_moon`,
+and the gravitational constants for the sun and moon `G_sun` and `G_moon`.
+"""
 @inline function compute_tidal_potential(λ, φ, X_sun, X_moon, G_sun, G_moon)
     λ_sun,  φ_lat, R_sun  = X_sun
     λ_moon, φ_lat, R_moon = X_moon
@@ -187,6 +200,12 @@ using KernelAbstractions: @kernel, @index
 
 const XYField = Field{<:Any, <:Any, Nothing}
 
+"""
+    compute_tidal_potential!(Φ, time)
+
+Compute the effective tidal potential corrected for the
+solid Earth tide at `time` and over the nodes of `Φ`.
+"""
 function compute_tidal_potential!(Φ::XYField, time)
     G_sun, G_moon = gravitational_parameters()
     X_sun, X_moon = celestial_positions(time)
@@ -212,3 +231,4 @@ end
 end
 
 end # module Tidejinks
+
