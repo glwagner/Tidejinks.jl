@@ -4,30 +4,20 @@ using Scratch
 using Downloads
 using ClimaOcean.DataWrangling: download_progress
 
+# URLs to NAIF data
+# See https://naif.jpl.nasa.gov/pub/naif for more information.
+const NAIF = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
+
 kerneldata = Dict(
-    "de440.bsp" => "https://www.dropbox.com/scl/fi/rncpxkcad8fmr2oxboq0k/" *
-                   "de440.bsp?rlkey=5ao2velhbqvb28mdzjs29pol2&st=sgya8xqa&dl=0",
-
-    "earth_000101_220503_220207.bpc" => "https://www.dropbox.com/scl/fi/f6pedw7fkulba152st2sc/" *
-                                        "earth_000101_220503_220207.bpc?rlkey=dm4k6u0xchtdu82fh9b40mqn5&st=lbc569eg&dl=0",
-
-    "earth_720101_070426.bpc" => "https://www.dropbox.com/scl/fi/oh4jd57xy46ir3nq4lsnu/" *
-                                 "earth_720101_070426.bpc?rlkey=v23cjs3mn5y1j2n0n6xq8fqv0&st=lyfz74d7&dl=0",
-
-    "earth_assoc_itrf93.tf" => "https://www.dropbox.com/scl/fi/3qb0hjc2piymn2ouj6xvm/" * 
-                               "earth_assoc_itrf93.tf?rlkey=0lrzv9tfgyha7pmxwxlf2cyw5&st=mrq7cxwl&dl=0",
-
-    "gm_de431.tpc" => "https://www.dropbox.com/scl/fi/ks439kq6u5n0qe3kvxgr4/" *
-                      "gm_de431.tpc?rlkey=tovdsv0j27pguuy2hdyuf1gpa&st=fri24ium&dl=0",
-
-    "naif0012.tls" => "https://www.dropbox.com/scl/fi/btiewfxq46wqinxxdmu8k/" *
-                      "naif0012.tls?rlkey=eep0924pqycbbnsib88al8mem&st=j9qba8zm&dl=0",
-
-    "pck00010.tpc" => "https://www.dropbox.com/scl/fi/tqgp7jg4avm6ulyrwa0zh/" *
-                      "pck00010.tpc?rlkey=johcphes1h8a2nkxml9euth15&st=vcv77231&dl=0",
-
-    "latest_leapseconds.tls" => "https://www.dropbox.com/scl/fi/btcttj688gxuxki90mor6/" * 
-                                "latest_leapseconds.tls?rlkey=66xhz970q7tzrtvtrmxto20ie&st=hwmbtfks&dl=0",
+    "de440.bsp"                      => NAIF * "/spk/planets/de440.bsp",
+    "earth_assoc_itrf93.tf"          => NAIF * "/fk/planets/earth_assoc_itrf93.tf",
+    "earth_000101_220503_220207.bpc" => NAIF * "/pck/earth_000101_220503_220207.bpc",
+    "earth_720101_070426.bpc"        => NAIF * "/pck/earth_720101_070426.bpc",
+    "earth_000101_220503_220207.bpc" => NAIF * "/pck/earth_000101_220503_220207.bpc",
+    "gm_de431.tpc"                   => NAIF * "/pck/gm_de431.bpc",
+    "pck00010.tpc"                   => NAIF * "/pck/pck00010.tpc",
+    "latest_leapseconds.tls"         => NAIF * "/lsk/latest_leapseconds.tls",
+    "naif0012.tls"                   => NAIF * "/lsk/naif0012.tls",
 )
 
 spice_cache::String = ""
