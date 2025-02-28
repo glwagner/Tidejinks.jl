@@ -178,6 +178,12 @@ and the gravitational constants for the sun and moon `G_sun` and `G_moon`.
     μ_sun  = calculate_zenith_cosine(λ, φ, λ_sun, φ_lat)
     μ_moon = calculate_zenith_cosine(λ, φ, λ_moon, φ_lat)
 
+    !(-1 < μ_sun < 1)  && @warn("μ_sun=$μ_sun lies outside [-1, 1]")
+    !(-1 < μ_moon < 1) && @warn("μ_moon=$μ_moon lies outside [-1, 1]")
+
+    μ_sun  = clamp(μ_sun,  -1, 1)
+    μ_moon = clamp(μ_moon, -1, 1)
+
     # Calculate parallaxes
     χ_sun  = EARTH_RADIUS / R_sun
     χ_moon = EARTH_RADIUS / R_moon
