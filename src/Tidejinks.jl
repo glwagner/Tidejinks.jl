@@ -53,7 +53,7 @@ function wrangle_spice_kernels(metafile="kernels.txt", kernel_relpath="")
     for path in keys(kerneldata)
         scratch_path = joinpath(spice_cache, path)
         local_path = joinpath(kernel_relpath, path)
-        !isfile(local_path) && cp(scratch_path, kernel_relpath)
+        !isfile(local_path) && cp(scratch_path, local_path)
     end
 
     if kernel_relpath != "" && kernel_relpath[end] != '/'
