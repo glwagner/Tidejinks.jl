@@ -12,12 +12,12 @@ import SPICE
 end
 
 @testset "Computing tidal potentials..." begin
-    grid = LatitudeLongtiudeGrid(size=(90, 45, 1), longitude=(0, 360), latitude=(-90, 90), z=(0, 1))
+    grid = LatitudeLongitudeGrid(size=(90, 45, 1), longitude=(0, 360), latitude=(-90, 90), z=(0, 1))
     Φ = Field{Center, Center, Nothing}(grid)
-    t = DateTime(1993, 1, 1, 1) + Second(times[1])
+    t = DateTime(1993, 1, 1, 1)
     Tidejinks.compute_tidal_potential!(Φ, t)
-    @show maximum(Φ)
-    @show minimum(Φ)
+    @test maximum(Φ) ≈ 1.6422346052783796
+    @test minimum(Φ) ≈ -1.5737500023619164
 end
 
 

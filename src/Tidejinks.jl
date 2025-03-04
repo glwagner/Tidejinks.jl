@@ -91,6 +91,8 @@ function __init__()
         success = retrying_download(url, filepath; progress=download_progress)
         if !success
             backup_url = backup_kerneldata[path]
+            @info "Download failed for $url."
+            @info "Trying backup_url $backup_url..."
             retrying_download(backup_url, filepath; progress=download_progress)
         end
     end
