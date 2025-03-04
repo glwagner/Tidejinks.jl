@@ -26,13 +26,42 @@ kerneldata = Dict(
 
 spice_cache::String = ""
 
+"""
+    retrying_download(url::String, dest::String; max_retries=3, delay=2.0)
+
+Attempts to download a file from `url` to `dest`.
+Retries up to `max_retries` times with an increasing delay.
+Returns `true` if successful, `false` otherwise.
+"""
+function retrying_download(url::String, dest::String; progress=true, max_retries=3, delay=2)
+    if !isfile(dest)
+        for attempt in 1:max_retries
+            try
+                Downloads.download(url, dest; progress)
+                @info "Successfully downloaded $url -> $dest"
+                return true
+            catch e
+                @warn "Download failed (attempt $attempt/$max_retries) for $url: $e"
+                if attempt < max_retries
+                    sleep(delay * attempt)  # Exponential backoff
+                    @warn "Retrying in $(delay * attempt) seconds..."
+                end
+            end
+        end
+
+        @error "Failed to download $url after $max_retries attempts"
+    end
+
+    return false
+end
+
 function __init__()
     global spice_cache = @get_scratch!("SPICE")
 
     for (path, url) in kerneldata
         filepath = joinpath(spice_cache, path)
         @info "Downloading file to $filepath..."
-        !isfile(filepath) && Downloads.download(url, filepath; progress=download_progress)
+        retrying_download(url, filepath; progress=download_progress)
     end
 end
 
