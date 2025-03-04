@@ -12,3 +12,9 @@ LegendrePolynomials = "3db4a2ba-fc88-11e8-3e01-49c72059a882"
 Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
 SPICE = "5bab7191-041a-5c2e-a744-024b9c3a5062"
 Scratch = "6c6a2e73-6563-6170-7368-637461726353"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
