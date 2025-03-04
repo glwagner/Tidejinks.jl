@@ -80,6 +80,8 @@ produces
 
 https://github.com/user-attachments/assets/25c989c3-98cc-4a28-a43c-5ec4c1f875cb
 
+Note that the self-gravitational-attraction of the ocean changes the tidal potential significantly on Earth, but is not accounted for here.
+Moreover, computing tidal amplitudes requires also carefully considering the drag between tidal velocities and the rough ocean bottom.
 
 ## Acknowledgements
 
