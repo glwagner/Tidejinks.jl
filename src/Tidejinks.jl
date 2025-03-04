@@ -24,7 +24,63 @@ kerneldata = Dict(
     "naif0012.tls"                   => NAIF * "/lsk/naif0012.tls",
 )
 
+backup_kerneldata = Dict(
+    "de440.bsp" => "https://www.dropbox.com/scl/fi/rncpxkcad8fmr2oxboq0k/" *
+                   "de440.bsp?rlkey=5ao2velhbqvb28mdzjs29pol2&st=sgya8xqa&dl=0",
+
+    "earth_000101_220503_220207.bpc" => "https://www.dropbox.com/scl/fi/f6pedw7fkulba152st2sc/" *
+                                        "earth_000101_220503_220207.bpc?rlkey=dm4k6u0xchtdu82fh9b40mqn5&st=lbc569eg&dl=0",
+
+    "earth_720101_070426.bpc" => "https://www.dropbox.com/scl/fi/oh4jd57xy46ir3nq4lsnu/" *
+                                 "earth_720101_070426.bpc?rlkey=v23cjs3mn5y1j2n0n6xq8fqv0&st=lyfz74d7&dl=0",
+
+    "earth_assoc_itrf93.tf" => "https://www.dropbox.com/scl/fi/3qb0hjc2piymn2ouj6xvm/" *
+                               "earth_assoc_itrf93.tf?rlkey=0lrzv9tfgyha7pmxwxlf2cyw5&st=mrq7cxwl&dl=0",
+
+    "gm_de431.tpc" => "https://www.dropbox.com/scl/fi/ks439kq6u5n0qe3kvxgr4/" *
+                      "gm_de431.tpc?rlkey=tovdsv0j27pguuy2hdyuf1gpa&st=fri24ium&dl=0",
+
+    "naif0012.tls" => "https://www.dropbox.com/scl/fi/btiewfxq46wqinxxdmu8k/" *
+                      "naif0012.tls?rlkey=eep0924pqycbbnsib88al8mem&st=j9qba8zm&dl=0",
+
+    "pck00010.tpc" => "https://www.dropbox.com/scl/fi/tqgp7jg4avm6ulyrwa0zh/" *
+                      "pck00010.tpc?rlkey=johcphes1h8a2nkxml9euth15&st=vcv77231&dl=0",
+
+    "latest_leapseconds.tls" => "https://www.dropbox.com/scl/fi/btcttj688gxuxki90mor6/" *
+                                "latest_leapseconds.tls?rlkey=66xhz970q7tzrtvtrmxto20ie&st=hwmbtfks&dl=0",
+)
+
+
 spice_cache::String = ""
+
+"""
+    retrying_download(url::String, dest::String; max_retries=3, delay=2.0)
+
+Attempts to download a file from `url` to `dest`.
+Retries up to `max_retries` times with an increasing delay.
+Returns `true` if successful, `false` otherwise.
+"""
+function retrying_download(url::String, dest::String; progress=true, max_retries=3, delay=2)
+    if !isfile(dest)
+        for attempt in 1:max_retries
+            try
+                Downloads.download(url, dest; progress)
+                @info "Successfully downloaded $url -> $dest"
+                return true
+            catch e
+                @warn "Download failed (attempt $attempt/$max_retries) for $url: $e"
+                if attempt < max_retries
+                    sleep(delay * attempt)  # Exponential backoff
+                    @warn "Retrying in $(delay * attempt) seconds..."
+                end
+            end
+        end
+
+        @warn "Failed to download $url after $max_retries attempts"
+    end
+
+    return false
+end
 
 function __init__()
     global spice_cache = @get_scratch!("SPICE")
@@ -32,7 +88,13 @@ function __init__()
     for (path, url) in kerneldata
         filepath = joinpath(spice_cache, path)
         @info "Downloading file to $filepath..."
-        !isfile(filepath) && Downloads.download(url, filepath; progress=download_progress)
+        success = retrying_download(url, filepath; progress=download_progress)
+        if !success
+            backup_url = backup_kerneldata[path]
+            @info "Download failed for $url."
+            @info "Trying backup_url $backup_url..."
+            retrying_download(backup_url, filepath; progress=download_progress)
+        end
     end
 end
 
@@ -113,16 +175,12 @@ function get_body_position(body, time)
     return λ, φ, r
 end
 
-"""'h' for 'hack'"""
-@inline hsind(φ) = sin(φ * π / 180)
-@inline hcosd(φ) = cos(φ * π / 180)
-
 """
     calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂)
 
 Calculate cosine of zenith angle using spherical law of cosines.
 """
-@inline calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂) = hsind(φ₁) * hsind(φ₂) + hcosd(φ₁) * hcosd(φ₂) * hcosd(λ₂ - λ₁)
+@inline calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂) = sin(φ₁) * sin(φ₂) + cos(φ₁) * cos(φ₂) * cos(λ₂ - λ₁)
 
 """
     gravitational_parameters()
@@ -231,6 +289,14 @@ end
     i, j = @index(Global, NTuple)
     λ = λnode(i, j, 1, grid, ℓx, ℓy, nothing)
     φ = φnode(i, j, 1, grid, ℓx, ℓy, nothing)
+
+    # Convert λ to -180..180
+    λ -= 360 * (λ > 180)
+
+    # Convert to radians
+    λ *= π/180 
+    φ *= π/180 
+
     @inbounds Φ[i, j, 1] = compute_tidal_potential(λ, φ,
                                                    p.X_sun, p.X_moon,
                                                    p.G_sun, p.G_moon)
