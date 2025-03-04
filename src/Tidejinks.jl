@@ -113,16 +113,12 @@ function get_body_position(body, time)
     return λ, φ, r
 end
 
-"""'h' for 'hack'"""
-@inline hsind(φ) = sin(φ * π / 180)
-@inline hcosd(φ) = cos(φ * π / 180)
-
 """
     calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂)
 
 Calculate cosine of zenith angle using spherical law of cosines.
 """
-@inline calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂) = hsind(φ₁) * hsind(φ₂) + hcosd(φ₁) * hcosd(φ₂) * hcosd(λ₂ - λ₁)
+@inline calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂) = sin(φ₁) * sin(φ₂) + cos(φ₁) * cos(φ₂) * cos(λ₂ - λ₁)
 
 """
     gravitational_parameters()
@@ -231,6 +227,14 @@ end
     i, j = @index(Global, NTuple)
     λ = λnode(i, j, 1, grid, ℓx, ℓy, nothing)
     φ = φnode(i, j, 1, grid, ℓx, ℓy, nothing)
+
+    # Convert λ to -180..180
+    λ -= 360 * (λ > 180)
+
+    # Convert to radians
+    λ *= π/180 
+    φ *= π/180 
+
     @inbounds Φ[i, j, 1] = compute_tidal_potential(λ, φ,
                                                    p.X_sun, p.X_moon,
                                                    p.G_sun, p.G_moon)
