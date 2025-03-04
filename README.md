@@ -5,6 +5,16 @@ Hi-jinks for adding tides to ClimaOcean simulations.
 `Tidejinks` provides 1) a way to download astronomical data about the position of the sun and moon at a particular time and
 2) a function that will compute the tidal potential on an `Oceananigans` grid.
 
+## Installation
+
+Try
+
+```julia
+julia> using Pkg; Pkg.add("https://github.com/glwagner/Tidejinks.jl.git")
+```
+
+## Computing tidal potentials
+
 Here's an example of computing the tidal potential due to the sun and moon's gravitational force
 on a one-degree `LatitudeLongitudeGrid`:
 
