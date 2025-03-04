@@ -2,32 +2,26 @@ module Tidejinks
 
 using Scratch
 using Downloads
+using LegendrePolynomials
+using Oceananigans
 using ClimaOcean.DataWrangling: download_progress
 
+# URLs to NAIF data
+# See https://naif.jpl.nasa.gov/pub/naif for more information.
+const NAIF = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels"
+
 kerneldata = Dict(
-    "de440.bsp" => "https://www.dropbox.com/scl/fi/rncpxkcad8fmr2oxboq0k/" *
-                   "de440.bsp?rlkey=5ao2velhbqvb28mdzjs29pol2&st=sgya8xqa&dl=0",
-
-    "earth_000101_220503_220207.bpc" => "https://www.dropbox.com/scl/fi/f6pedw7fkulba152st2sc/" *
-                                        "earth_000101_220503_220207.bpc?rlkey=dm4k6u0xchtdu82fh9b40mqn5&st=lbc569eg&dl=0",
-
-    "earth_720101_070426.bpc" => "https://www.dropbox.com/scl/fi/oh4jd57xy46ir3nq4lsnu/" *
-                                 "earth_720101_070426.bpc?rlkey=v23cjs3mn5y1j2n0n6xq8fqv0&st=lyfz74d7&dl=0",
-
-    "earth_assoc_itrf93.tf" => "https://www.dropbox.com/scl/fi/3qb0hjc2piymn2ouj6xvm/" * 
-                               "earth_assoc_itrf93.tf?rlkey=0lrzv9tfgyha7pmxwxlf2cyw5&st=mrq7cxwl&dl=0",
-
-    "gm_de431.tpc" => "https://www.dropbox.com/scl/fi/ks439kq6u5n0qe3kvxgr4/" *
-                      "gm_de431.tpc?rlkey=tovdsv0j27pguuy2hdyuf1gpa&st=fri24ium&dl=0",
-
-    "naif0012.tls" => "https://www.dropbox.com/scl/fi/btiewfxq46wqinxxdmu8k/" *
-                      "naif0012.tls?rlkey=eep0924pqycbbnsib88al8mem&st=j9qba8zm&dl=0",
-
-    "pck00010.tpc" => "https://www.dropbox.com/scl/fi/tqgp7jg4avm6ulyrwa0zh/" *
-                      "pck00010.tpc?rlkey=johcphes1h8a2nkxml9euth15&st=vcv77231&dl=0",
-
-    "latest_leapseconds.tls" => "https://www.dropbox.com/scl/fi/btcttj688gxuxki90mor6/" * 
-                                "latest_leapseconds.tls?rlkey=66xhz970q7tzrtvtrmxto20ie&st=hwmbtfks&dl=0",
+    # "Leap seconds kernel
+    "de440.bsp"                      => NAIF * "/spk/planets/de440.bsp",
+    "earth_assoc_itrf93.tf"          => NAIF * "/fk/planets/earth_assoc_itrf93.tf",
+    "earth_000101_220503_220207.bpc" => NAIF * "/pck/earth_000101_220503_220207.bpc",
+    "earth_720101_070426.bpc"        => NAIF * "/pck/earth_720101_070426.bpc",
+    "earth_000101_220503_220207.bpc" => NAIF * "/pck/earth_000101_220503_220207.bpc",
+    "gm_de431.tpc"                   => NAIF * "/pck/gm_de431.bpc",
+    "pck00010.tpc"                   => NAIF * "/pck/pck00010.tpc",
+    "latest_leapseconds.tls"         => NAIF * "/lsk/latest_leapseconds.tls",
+    # "Leap seconds kernel
+    "naif0012.tls"                   => NAIF * "/lsk/naif0012.tls",
 )
 
 spice_cache::String = ""
@@ -59,7 +53,7 @@ function wrangle_spice_kernels(metafile="kernels.txt", kernel_relpath="")
     for path in keys(kerneldata)
         scratch_path = joinpath(spice_cache, path)
         local_path = joinpath(kernel_relpath, path)
-        !isfile(local_path) && cp(scratch_path, kernel_relpath)
+        !isfile(local_path) && cp(scratch_path, local_path)
     end
 
     if kernel_relpath != "" && kernel_relpath[end] != '/'
@@ -131,26 +125,29 @@ Calculate cosine of zenith angle using spherical law of cosines.
 @inline calculate_zenith_cosine(λ₁, φ₁, λ₂, φ₂) = hsind(φ₁) * hsind(φ₂) + hcosd(φ₁) * hcosd(φ₂) * hcosd(λ₂ - λ₁)
 
 """
-    compute_potential(longitude, latitude, time; density=1)
+    gravitational_parameters()
 
-Compute tidal potential at specified time for given grid coordinates.
+Return `G_sun, G_moon`, the gravitational constants for the sun and moon,
+respectively.
 
-Arguments:
-- longitude: 2D array of longitude values in radians
-- latitude: 2D array of latitude values in radians
-- time: DateTime object specifying the time
-- density: reference density (default=1)
-
-Returns:
-- 2D array of tidal potential values
+Uses the CSPICE function `bodvrd`.
+See https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/bodvrd_c.html.
 """
 function gravitational_parameters()
     # Get gravitational parameters (in m)
+    # https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/bodvrd_c.html
     G_sun  = first(bodvrd("SUN", "GM", 1)) * 1e9
     G_moon = first(bodvrd("MOON", "GM", 1)) * 1e9
     return G_sun, G_moon
 end
 
+"""
+    celestrial_positions(time)
+
+Return `X_sun, X_moon`, 3-tuples that represent the
+longitude, latitude, and distance of the sun and moon
+respectively relative to Earth.
+"""
 function celestial_positions(time)
     # Get celestial body positions
     X_sun  = get_body_position("SUN", time)
@@ -165,8 +162,14 @@ function compute_tidal_potential(λ, φ, time)
     return compute_tidal_potential(λ, φ, X_sun, X_moon, G_sun, G_moon)
 end
 
-using LegendrePolynomials
+"""
+    compute_tidal_potential(λ, φ, X_sun, X_moon, G_sun, G_moon)
 
+Compute the effective tidal potential corrected for the
+solid Earth tide at Earth longitude `λ` and Earth latitude `φ`,
+given spherical position of the sun and moon `X_sun` and `X_moon`,
+and the gravitational constants for the sun and moon `G_sun` and `G_moon`.
+"""
 @inline function compute_tidal_potential(λ, φ, X_sun, X_moon, G_sun, G_moon)
     λ_sun,  φ_lat, R_sun  = X_sun
     λ_moon, φ_lat, R_moon = X_moon
@@ -174,6 +177,12 @@ using LegendrePolynomials
     # Calculate zenith cosines
     μ_sun  = calculate_zenith_cosine(λ, φ, λ_sun, φ_lat)
     μ_moon = calculate_zenith_cosine(λ, φ, λ_moon, φ_lat)
+
+    !(-1 < μ_sun < 1)  && @warn("μ_sun=$μ_sun lies outside [-1, 1]")
+    !(-1 < μ_moon < 1) && @warn("μ_moon=$μ_moon lies outside [-1, 1]")
+
+    μ_sun  = clamp(μ_sun,  -1, 1)
+    μ_moon = clamp(μ_moon, -1, 1)
 
     # Calculate parallaxes
     χ_sun  = EARTH_RADIUS / R_sun
@@ -197,6 +206,12 @@ using KernelAbstractions: @kernel, @index
 
 const XYField = Field{<:Any, <:Any, Nothing}
 
+"""
+    compute_tidal_potential!(Φ, time)
+
+Compute the effective tidal potential corrected for the
+solid Earth tide at `time` and over the nodes of `Φ`.
+"""
 function compute_tidal_potential!(Φ::XYField, time)
     G_sun, G_moon = gravitational_parameters()
     X_sun, X_moon = celestial_positions(time)
@@ -222,3 +237,4 @@ end
 end
 
 end # module Tidejinks
+
