@@ -26,6 +26,8 @@ Manifest.toml
 *.txt
 *.swp
 
+*.jld2
+
 *.DS_Store
 *.bsp
 *.bpc

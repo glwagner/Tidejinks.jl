@@ -15,7 +15,7 @@ kerneldata = Dict(
     "de440.bsp"                      => NAIF * "/spk/planets/de440.bsp",
     "earth_assoc_itrf93.tf"          => NAIF * "/fk/planets/earth_assoc_itrf93.tf",
     "earth_000101_220503_220207.bpc" => NAIF * "/pck/earth_000101_220503_220207.bpc",
-    "earth_720101_070426.bpc"        => NAIF * "/pck/earth_720101_070426.bpc",
+    "earth_720101_070426.bpc"        => NAIF * "/pck/a_old_versions/earth_720101_070426.bpc",
     "earth_000101_220503_220207.bpc" => NAIF * "/pck/earth_000101_220503_220207.bpc",
     "gm_de431.tpc"                   => NAIF * "/pck/gm_de431.bpc",
     "pck00010.tpc"                   => NAIF * "/pck/pck00010.tpc",
@@ -54,32 +54,35 @@ backup_kerneldata = Dict(
 spice_cache::String = ""
 
 """
-    retrying_download(url::String, dest::String; max_retries=3, delay=2.0)
+    retrying_download(url::String, dest::String; retries=3, delay=2)
 
 Attempts to download a file from `url` to `dest`.
 Retries up to `max_retries` times with an increasing delay.
 Returns `true` if successful, `false` otherwise.
 """
-function retrying_download(url::String, dest::String; progress=true, max_retries=3, delay=2)
+function retrying_download(url::String, dest::String; progress=nothing, retries=3, delay=4)
+    # Downloads.download(url, dest; progress)
+
     if !isfile(dest)
-        for attempt in 1:max_retries
+        for attempt in 1:retries
             try
                 Downloads.download(url, dest; progress)
                 @info "Successfully downloaded $url -> $dest"
                 return true
             catch e
-                @warn "Download failed (attempt $attempt/$max_retries) for $url: $e"
-                if attempt < max_retries
-                    sleep(delay * attempt)  # Exponential backoff
+                @warn "Download failed (attempt $attempt/$retries) for $url: $e"
+                if attempt < retries
+                    sleep(delay * attempt) # Exponential backoff
                     @warn "Retrying in $(delay * attempt) seconds..."
                 end
             end
         end
 
-        @warn "Failed to download $url after $max_retries attempts"
+        @warn "Failed to download $url after $retries attempts"
+        return false
+    else
+        return true
     end
-
-    return false
 end
 
 function __init__()
@@ -89,7 +92,8 @@ function __init__()
         filepath = joinpath(spice_cache, path)
         @info "Downloading file to $filepath..."
         success = retrying_download(url, filepath; progress=download_progress)
-        if !success
+
+        if !success # we have a backup!
             backup_url = backup_kerneldata[path]
             @info "Download failed for $url."
             @info "Trying backup_url $backup_url..."
