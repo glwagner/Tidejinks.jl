@@ -1,6 +1,6 @@
 # Tidejinks.jl
 
-Hi-jinks for adding tides to ClimaOcean simulations.
+Hi-jinks for adding tides to Oceananigans/NumericalEarth simulations.
 
 `Tidejinks` provides 1) a way to download astronomical data about the position of the sun and moon at a particular time and
 2) a function that will compute the tidal potential on an `Oceananigans` grid.
