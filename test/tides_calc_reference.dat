@@ -2,7 +2,7 @@
 # MITgcm-contrib/llc_hires llc_90/tides_exps/pkg_tides (rev 4e1a0616) with SPICELIB N0067,
 # k₂ = 0.3, h₂ = 0.61, a = 6371 km, no permanent tide, and the kernels Tidejinks downloads.
 # Nodes of LatitudeLongitudeGrid(size=(4, 3, 1), longitude=(0, 360), latitude=(-60, 60)).
-# frame year month day hour minute longitude latitude Φ
+# reference_frame year month day hour minute longitude latitude Φ
 IAU_EARTH 1993 1 1 1 0 45 -40 -2.8339569527201469E-01
 IAU_EARTH 1993 1 1 1 0 135 -40 -2.1626165350543794E-01
 IAU_EARTH 1993 1 1 1 0 225 -40 -1.1537869701991835E-01

@@ -16,10 +16,10 @@ end
     grid = LatitudeLongitudeGrid(size=(4, 3, 1), longitude=(0, 360), latitude=(-60, 60), z=(0, 1))
     Φ = Field{Center, Center, Nothing}(grid)
 
-    for frame in ("IAU_EARTH", "ITRF93"), date in unique(row[2:6] for row in rows)
+    for reference_frame in ("IAU_EARTH", "ITRF93"), date in unique(row[2:6] for row in rows)
         t = DateTime(parse.(Int, date)...)
-        reference = [parse(Float64, row[9]) for row in rows if row[1] == frame && row[2:6] == date]
-        Tidejinks.compute_tidal_potential!(Φ, t, frame)
+        reference = [parse(Float64, row[9]) for row in rows if row[1] == reference_frame && row[2:6] == date]
+        Tidejinks.compute_tidal_potential!(Φ, t, reference_frame)
         @test vec(interior(Φ)) ≈ reference atol=1e-9
     end
 end

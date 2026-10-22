@@ -154,14 +154,14 @@ const LOVE_K2 = 0.30
 using Dates
 
 """
-    get_body_position(body, time, frame="ITRF93")
+    get_body_position(body, time, reference_frame="ITRF93")
 
-Get longitude, latitude, and distance of celestial body in the Earth-fixed `frame`.
+Get longitude, latitude, and distance of celestial body in the Earth-fixed `reference_frame`.
 """
-function get_body_position(body, time, frame="ITRF93")
+function get_body_position(body, time, reference_frame="ITRF93")
     time_str = Dates.format(time, "yyyy-mm-dd HH:MM:SS") * " UTC"
     ephemeris_time = str2et(time_str)
-    position_rectangular, _ = spkpos(body, ephemeris_time, frame, "NONE", "EARTH")
+    position_rectangular, _ = spkpos(body, ephemeris_time, reference_frame, "NONE", "EARTH")
     position_geodetic = recgeo(position_rectangular, EARTH_RADIUS/1e3, 0)
     position_radial = recrad(position_rectangular)
 
@@ -205,17 +205,17 @@ Return `X_sun, X_moon`, 3-tuples that represent the
 longitude, latitude, and distance of the sun and moon
 respectively relative to Earth.
 """
-function celestial_positions(time, frame="ITRF93")
+function celestial_positions(time, reference_frame="ITRF93")
     # Get celestial body positions
-    X_sun  = get_body_position("SUN", time, frame)
-    X_moon = get_body_position("MOON", time, frame)
+    X_sun  = get_body_position("SUN", time, reference_frame)
+    X_moon = get_body_position("MOON", time, reference_frame)
 
     return X_sun, X_moon
 end
 
-function compute_tidal_potential(λ, φ, time, frame="ITRF93")
+function compute_tidal_potential(λ, φ, time, reference_frame="ITRF93")
     G_sun, G_moon = gravitational_parameters()
-    X_sun, X_moon = celestial_positions(time, frame)
+    X_sun, X_moon = celestial_positions(time, reference_frame)
     return compute_tidal_potential(λ, φ, X_sun, X_moon, G_sun, G_moon)
 end
 
@@ -258,14 +258,14 @@ using KernelAbstractions: @kernel, @index
 const XYField = Field{<:Any, <:Any, Nothing}
 
 """
-    compute_tidal_potential!(Φ, time, frame="ITRF93")
+    compute_tidal_potential!(Φ, time, reference_frame="ITRF93")
 
 Compute the effective tidal potential corrected for the
 solid Earth tide at `time` and over the nodes of `Φ`.
 """
-function compute_tidal_potential!(Φ::XYField, time, frame="ITRF93")
+function compute_tidal_potential!(Φ::XYField, time, reference_frame="ITRF93")
     G_sun, G_moon = gravitational_parameters()
-    X_sun, X_moon = celestial_positions(time, frame)
+    X_sun, X_moon = celestial_positions(time, reference_frame)
     parameters = (; G_sun, G_moon, X_sun, X_moon)
 
     LX, LY, LZ = Oceananigans.Fields.location(Φ)
