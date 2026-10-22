@@ -295,5 +295,113 @@ end
                                                    p.G_sun, p.G_moon)
 end
 
+#####
+##### The tidal potential as a function of model time, for evaluation in kernels
+#####
+
+using Adapt
+using Oceananigans.Architectures: architecture, on_architecture
+
+# Rotation rate of the IAU_EARTH model, 360.9856235ᵒ per day
+const EARTH_ROTATION_RATE = 2π * 360.9856235 / 360 / 86400
+
+struct TidalPotential{FT, C, P} <: Function
+    first_sample_time :: FT
+    sampling_interval :: FT
+    rotation_rate :: FT
+    coefficients :: C
+    phases :: P
+end
+
+Adapt.@adapt_structure TidalPotential
+
+"""
+    TidalPotential(grid, dates; epoch = first(dates), sampling_interval = Hour(1), reference_frame = "ITRF93")
+
+Return the tidal potential `Φ(λ, φ, t)` (m² s⁻²) over `dates = (start_date, end_date)`,
+where `λ` and `φ` are longitude and latitude in degrees and `t` is the model time
+in seconds since `epoch`. `Φ` is the potential of [`compute_tidal_potential`](@ref),
+written with the addition theorem as
+
+    Φ = D₀ P₂(sin φ) + sin φ cos φ (D₁ᶜ cos χ + D₁ˢ sin χ) + cos²φ (D₂ᶜ cos 2χ + D₂ˢ sin 2χ),
+
+where `χ = λ + Ω t` and `Ω` is Earth's rotation rate. The five coefficients `D` vary on the
+time scales of the lunar and solar orbits. They are computed from the positions of the Sun
+and the Moon every `sampling_interval` and interpolated in time with four-point Lagrange
+polynomials. The rotation phase `Ω t` is stored modulo 2π at each sample, so `Φ` stays
+accurate when `t` is single precision.
+
+SPICE kernels with the ephemerides and the `reference_frame` must be loaded.
+"""
+function TidalPotential(grid, dates; epoch = first(dates), sampling_interval = Hour(1), reference_frame = "ITRF93")
+    start_date, end_date = dates
+    G_sun, G_moon = gravitational_parameters()
+    Δτ = Millisecond(sampling_interval)
+    sample_dates = (start_date - Δτ):Δτ:(end_date + 2Δτ)
+    model_time(date) = Dates.value(date - epoch) / 1000
+
+    coefficients = zeros(5, length(sample_dates))
+    phases = zeros(length(sample_dates))
+    for (n, date) in enumerate(sample_dates)
+        ϑ = EARTH_ROTATION_RATE * model_time(date)
+        coefficients[:, n] .= rotate(tidal_coefficients(date, G_sun, G_moon, reference_frame), ϑ)
+        phases[n] = mod(ϑ, 2π)
+    end
+
+    FT = eltype(grid)
+    arch = architecture(grid)
+    return TidalPotential(convert(FT, model_time(first(sample_dates))),
+                          convert(FT, Dates.value(Δτ) / 1000),
+                          convert(FT, EARTH_ROTATION_RATE),
+                          on_architecture(arch, convert(Array{FT}, coefficients)),
+                          on_architecture(arch, convert(Array{FT}, phases)))
+end
+
+# Coefficients of P₂(sin φ), sin φ cos φ (cos λ, sin λ), and cos²φ (cos 2λ, sin 2λ) in the potential at `date`
+function tidal_coefficients(date, G_sun, G_moon, reference_frame)
+    ϵ = 1 + LOVE_K2 - LOVE_H2
+    C = zeros(5)
+    for (G, (λ, φ, R)) in zip((G_sun, G_moon), celestial_positions(date, reference_frame))
+        A = - ϵ * G / R * (EARTH_RADIUS / R)^2
+        s, c = sin(φ), cos(φ)
+        C .+= A .* ((3s^2 - 1) / 2, 3s * c * cos(λ), 3s * c * sin(λ), 3c^2 / 4 * cos(2λ), 3c^2 / 4 * sin(2λ))
+    end
+    return C
+end
+
+# Coefficients of the same potential in terms of χ = λ + ϑ
+function rotate(C, ϑ)
+    c₁, s₁ = cos(ϑ), sin(ϑ)
+    c₂, s₂ = cos(2ϑ), sin(2ϑ)
+    return (C[1], C[2] * c₁ - C[3] * s₁, C[3] * c₁ + C[2] * s₁, C[4] * c₂ - C[5] * s₂, C[5] * c₂ + C[4] * s₂)
+end
+
+# Four-point Lagrange interpolation at θ ∈ [0, 1] between y₀ and y₁
+@inline lagrange(y₋₁, y₀, y₁, y₂, θ) = - θ * (θ - 1) * (θ - 2) / 6 * y₋₁ + (θ + 1) * (θ - 1) * (θ - 2) / 2 * y₀ -
+                                         (θ + 1) * θ * (θ - 2) / 2 * y₁ + (θ + 1) * θ * (θ - 1) / 6 * y₂
+
+@inline function (Φ::TidalPotential)(λ, φ, t)
+    Δτ = Φ.sampling_interval
+    s = (t - Φ.first_sample_time) / Δτ
+    N = length(Φ.phases)
+    n = clamp(unsafe_trunc(Int, floor(s)) + 1, 2, N - 2)
+    θ = s - (n - 1)
+    D = Φ.coefficients
+
+    @inbounds begin
+        D₀  = lagrange(D[1, n-1], D[1, n], D[1, n+1], D[1, n+2], θ)
+        D₁ᶜ = lagrange(D[2, n-1], D[2, n], D[2, n+1], D[2, n+2], θ)
+        D₁ˢ = lagrange(D[3, n-1], D[3, n], D[3, n+1], D[3, n+2], θ)
+        D₂ᶜ = lagrange(D[4, n-1], D[4, n], D[4, n+1], D[4, n+2], θ)
+        D₂ˢ = lagrange(D[5, n-1], D[5, n], D[5, n+1], D[5, n+2], θ)
+        χ = deg2rad(λ) + Φ.phases[n] + Φ.rotation_rate * (t - Φ.first_sample_time - (n - 1) * Δτ)
+    end
+
+    μ = sin(deg2rad(φ))
+    c = cos(deg2rad(φ))
+
+    return D₀ * (3μ^2 - 1) / 2 + μ * c * (D₁ᶜ * cos(χ) + D₁ˢ * sin(χ)) + c^2 * (D₂ᶜ * cos(2χ) + D₂ˢ * sin(2χ))
+end
+
 end # module Tidejinks
 
