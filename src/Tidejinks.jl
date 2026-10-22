@@ -4,7 +4,6 @@ using Scratch
 using Downloads
 using LegendrePolynomials
 using Oceananigans
-using ClimaOcean.DataWrangling: download_progress
 
 # URLs to NAIF data
 # See https://naif.jpl.nasa.gov/pub/naif for more information.
@@ -17,7 +16,7 @@ kerneldata = Dict(
     "earth_000101_220503_220207.bpc" => NAIF * "/pck/earth_000101_220503_220207.bpc",
     "earth_720101_070426.bpc"        => NAIF * "/pck/earth_720101_070426.bpc",
     "earth_000101_220503_220207.bpc" => NAIF * "/pck/earth_000101_220503_220207.bpc",
-    "gm_de431.tpc"                   => NAIF * "/pck/gm_de431.bpc",
+    "gm_de431.tpc"                   => NAIF * "/pck/gm_de431.tpc",
     "pck00010.tpc"                   => NAIF * "/pck/pck00010.tpc",
     "latest_leapseconds.tls"         => NAIF * "/lsk/latest_leapseconds.tls",
     # "Leap seconds kernel
@@ -60,11 +59,11 @@ Attempts to download a file from `url` to `dest`.
 Retries up to `max_retries` times with an increasing delay.
 Returns `true` if successful, `false` otherwise.
 """
-function retrying_download(url::String, dest::String; progress=true, max_retries=3, delay=2)
+function retrying_download(url::String, dest::String; max_retries=3, delay=2)
     if !isfile(dest)
         for attempt in 1:max_retries
             try
-                Downloads.download(url, dest; progress)
+                Downloads.download(url, dest)
                 @info "Successfully downloaded $url -> $dest"
                 return true
             catch e
@@ -88,12 +87,12 @@ function __init__()
     for (path, url) in kerneldata
         filepath = joinpath(spice_cache, path)
         @info "Downloading file to $filepath..."
-        success = retrying_download(url, filepath; progress=download_progress)
+        success = retrying_download(url, filepath)
         if !success
             backup_url = backup_kerneldata[path]
             @info "Download failed for $url."
             @info "Trying backup_url $backup_url..."
-            retrying_download(backup_url, filepath; progress=download_progress)
+            retrying_download(backup_url, filepath)
         end
     end
 end
